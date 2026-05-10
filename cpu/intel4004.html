@@ -1,0 +1,1594 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Intel 4004 Emulator</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: Arial, sans-serif; background: #111; color: #eee; padding: 15px; font-size: 13px; }
+    h1 { text-align: center; color: #fff; margin-bottom: 15px; font-size: 1.4em; letter-spacing: 2px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+    .panel { background: #222; border: 1px solid #555; border-radius: 4px; padding: 10px; margin-bottom: 10px; }
+    .panel h2 { font-size: 0.8em; color: #aaa; border-bottom: 1px solid #444; margin-bottom: 8px; padding-bottom: 4px; text-transform: uppercase; letter-spacing: 1px; }
+    .btn-row { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 6px; }
+    button { background: #3a3a3a; color: #ddd; border: 1px solid #666; padding: 6px 12px; border-radius: 3px; cursor: pointer; font-size: 0.85em; font-weight: bold; }
+    button:hover { background: #4a4a4a; }
+    button.green { background: #1a3a1a; border-color: #3a6a3a; color: #8f8; }
+    button.green:hover { background: #2a4a2a; }
+    button.red { background: #3a1a1a; border-color: #6a3a3a; color: #f88; }
+    button.red:hover { background: #4a2a2a; }
+    table { width: 100%; border-collapse: collapse; font-family: monospace; font-size: 0.85em; }
+    th { background: #333; color: #aaa; border: 1px solid #555; padding: 3px 5px; cursor: pointer; }
+    th:hover { background: #444; }
+    td { background: #2a2a2a; border: 1px solid #444; padding: 3px 5px; text-align: center; cursor: pointer; font-family: monospace; color: #ccc; }
+    td:hover { background: #383838; }
+    textarea { width: 100%; height: 120px; padding: 6px; background: #1a1a1a; color: #0f0; border: 1px solid #555; border-radius: 3px; font-family: monospace; font-size: 0.82em; resize: vertical; margin-bottom: 6px; }
+    select { background: #2a2a2a; color: #eee; border: 1px solid #555; padding: 4px 6px; border-radius: 3px; font-size: 0.85em; margin-right: 4px; }
+    input[type="checkbox"] { cursor: pointer; }
+    label { display: flex; align-items: center; gap: 4px; font-size: 0.85em; cursor: pointer; }
+    .flag-row { display: flex; gap: 10px; margin: 5px 0; }
+    .flag-item { display: flex; align-items: center; gap: 5px; background: #1e1e1e; border: 1px solid #555; padding: 4px 10px; border-radius: 3px; cursor: pointer; }
+    .accu-val { font-family: monospace; font-size: 1em; color: #0f0; cursor: pointer; padding: 5px 10px; background: #1a1a1a; border: 1px solid #555; border-radius: 3px; display: inline-block; margin-bottom: 6px; }
+    .cycles-box { background: #1a1a1a; border: 1px solid #555; padding: 4px 8px; border-radius: 3px; font-family: monospace; font-size: 0.85em; color: #ff0; margin-top: 5px; }
+    .disasm-box { background: #001a00; border: 1px solid #2a5a2a; padding: 6px 10px; border-radius: 3px; font-family: monospace; font-size: 0.85em; color: #0f0; min-height: 36px; margin-bottom: 6px; }
+    .mem-select { display: flex; align-items: center; gap: 5px; margin-bottom: 6px; flex-wrap: wrap; }
+    .out-row { display: flex; gap: 10px; margin-top: 4px; }
+    #break { position: fixed; top: 80px; left: 50%; transform: translateX(-50%); background: #222; border: 2px solid #888; border-radius: 4px; padding: 10px; width: 300px; max-height: 420px; overflow-y: auto; z-index: 999; display: none; }
+    #break .handle { background: #444; padding: 5px 8px; margin-bottom: 8px; border-radius: 3px; cursor: move; display: flex; justify-content: space-between; align-items: center; font-size: 0.85em; }
+    #break table tr { cursor: pointer; }
+    @media(max-width:800px){ .grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+
+<h1>&#9670; Intel 4004 Emulator &#9670;</h1>
+
+<div class="grid">
+
+  <!-- LEFT COLUMN -->
+  <div>
+
+    <!-- Control -->
+    <div class="panel">
+      <h2>CPU Control</h2>
+      <div class="btn-row">
+        <button id="step">STEP</button>
+        <button id="animate">ANIMATE</button>
+        <button id="run">RUN</button>
+        <button id="stop">STOP</button>
+        <button id="resetCPU">RESET CPU</button>
+        <button id="ra" class="red">RESET ALL</button>
+        <button id="bp">BREAKPOINTS</button>
+      </div>
+    </div>
+
+    <!-- Disassembler -->
+    <div class="panel">
+      <h2>Current Instruction</h2>
+      <div class="disasm-box" id="dassem"><span>---</span> &nbsp; <span></span></div>
+    </div>
+
+    <!-- Program Counter -->
+    <div class="panel">
+      <h2>Program Counter Stack</h2>
+      <div id="pc">
+        <table>
+          <tr>
+            <th colspan="3">PC0</th>
+            <th colspan="3">PC1</th>
+            <th colspan="3">PC2</th>
+            <th colspan="3">PC3</th>
+          </tr>
+          <tr>
+            <td>0</td><td>0</td><td>0</td>
+            <td>0</td><td>0</td><td>0</td>
+            <td>0</td><td>0</td><td>0</td>
+            <td>0</td><td>0</td><td>0</td>
+          </tr>
+        </table>
+      </div>
+    </div>
+
+    <!-- Registers -->
+    <div class="panel">
+      <h2>Registers R0–R15</h2>
+      <div id="registers">
+        <table>
+          <tr><th>R0</th><th>R1</th><th>R2</th><th>R3</th><th>R4</th><th>R5</th><th>R6</th><th>R7</th></tr>
+          <tr><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+          <tr><th>R8</th><th>R9</th><th>R10</th><th>R11</th><th>R12</th><th>R13</th><th>R14</th><th>R15</th></tr>
+          <tr><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+        </table>
+      </div>
+    </div>
+
+    <!-- Accumulator & Flags -->
+    <div class="panel">
+      <h2>Accumulator &amp; Flags</h2>
+      <div id="accu" class="accu-val"><b>0 [0000]</b></div>
+      <div class="flag-row">
+        <div class="flag-item" id="carry"><input type="checkbox"> <b>Carry</b></div>
+        <div class="flag-item" id="test"><input type="checkbox"> <b>Test</b></div>
+      </div>
+      <div class="cycles-box" id="cycles"><b>CYCLES:</b> 0</div>
+    </div>
+
+    <!-- ROM Port -->
+    <div class="panel">
+      <h2>ROM Port</h2>
+      <div class="out-row" id="port">
+        <label><input type="checkbox" disabled> P3</label>
+        <label><input type="checkbox" disabled> P2</label>
+        <label><input type="checkbox" disabled> P1</label>
+        <label><input type="checkbox" disabled> P0</label>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- RIGHT COLUMN -->
+  <div>
+
+    <!-- Program Input -->
+    <div class="panel">
+      <h2>Program Input (Hex)</h2>
+      <textarea id="data" placeholder="Enter hex bytes, e.g: D5 60 80 00&#10;Use *=$0100 to set address"></textarea>
+      <div style="display:flex; gap:10px; margin-bottom:6px;">
+        <label><input type="checkbox" id="ascii"> ASCII</label>
+        <label><input type="checkbox" id="dasm"> Disasm</label>
+      </div>
+      <div class="btn-row">
+        <button id="load">LOAD</button>
+        <button id="resetROM" class="red">CLEAR ROM</button>
+      </div>
+    </div>
+
+    <!-- Assembler Input -->
+    <div class="panel">
+      <h2>Assembler Input (Mnemonics)</h2>
+      <textarea id="asm-input" style="height:140px;" placeholder="Write assembly, e.g:&#10;LDM 5      ; A = 5&#10;XCH R2     ; R2 = A&#10;FIM P0, $34 ; R0=3, R1=4&#10;JUN LOOP   ; jump to label&#10;LOOP: INC R0&#10;NOP"></textarea>
+      <div id="asm-error" style="color:#f88;font-size:0.78em;min-height:16px;margin-bottom:4px;font-family:monospace;"></div>
+      <div class="btn-row">
+        <button id="asm-assemble" class="green">ASSEMBLE &amp; LOAD</button>
+        <button id="asm-clear" class="red">CLEAR</button>
+      </div>
+      <div style="font-size:0.75em;color:#777;margin-top:4px;">
+        Supports labels, semicolon comments. Registers: R0–R15, pairs P0–P7. Addresses in hex with $ prefix.
+      </div>
+    </div>
+
+    <!-- Sample Programs -->
+    <div class="panel">
+      <h2>Sample Programs</h2>
+      <div class="btn-row">
+        <button id="p-add" class="green">ADD: 5 + 3</button>
+        <button id="p-sub" class="green">SUB: 9 &minus; 4</button>
+        <button id="p-mul" class="green">MUL: 3 &times; 4</button>
+        <button id="p-disc" class="green">DISC: b&sup2;&minus;4ac</button>
+        <button id="p-count" class="green">COUNT: 0&rarr;F</button>
+        <button id="p1" class="green">RAM Write/Read</button>
+        <button id="p2" class="green">Full Test</button>
+      </div>
+      <div class="btn-row" style="margin-top:5px;">
+        <button id="p-prime" class="green">PRIME: is 7 prime?</button>
+        <button id="p-gen" class="green">GEN PRIMES: up to 13</button>
+        <button id="p-factor" class="green">FACTOR: 12</button>
+      </div>
+      <div style="font-size:0.75em; color:#777; margin-top:4px;">
+        PRIME: change 1st line &rarr; R2=1 prime, R2=0 not &nbsp;|&nbsp; GEN: R3&ndash;R8=primes, R2=count &nbsp;|&nbsp; FACTOR: R3&ndash;R6=factors, R2=count
+      </div>
+      <div style="display:flex; gap:12px; margin-top:6px;">
+        <label><input type="radio" name="hardware" id="hardware_0" checked> Standard</label>
+        <label><input type="radio" name="hardware" id="hardware_1"> Test mode</label>
+      </div>
+    </div>
+
+    <!-- RAM View 1 -->
+    <div class="panel">
+      <h2>RAM View 1</h2>
+      <div class="mem-select">
+        <span>Chip:</span>
+        <select id="select1-1"><option value="0">0</option><option value="1">1</option><option value="2">2</option><option value="3">3</option></select>
+        <span>Reg:</span>
+        <select id="select1-2"><option value="0">0</option><option value="1">1</option><option value="2">2</option><option value="3">3</option></select>
+        <button name="reset" style="font-size:0.75em; padding:2px 8px;">RESET</button>
+      </div>
+      <div id="memory_0">
+        <table>
+          <tr><th>0</th><th>1</th><th>2</th><th>3</th><th>4</th><th>5</th><th>6</th><th>7</th><th>8</th><th>9</th><th>A</th><th>B</th><th>C</th><th>D</th><th>E</th><th>F</th></tr>
+          <tr><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+          <tr><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+          <tr><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+          <tr><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+        </table>
+      </div>
+      <h2 style="margin-top:6px;">Status</h2>
+      <div id="status_0">
+        <table>
+          <tr><th>S0</th><th>S1</th><th>S2</th><th>S3</th><th>S0</th><th>S1</th><th>S2</th><th>S3</th><th>S0</th><th>S1</th><th>S2</th><th>S3</th><th>S0</th><th>S1</th><th>S2</th><th>S3</th></tr>
+          <tr><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+        </table>
+      </div>
+      <h2 style="margin-top:6px;">Output Port</h2>
+      <div class="out-row" id="outputs_0">
+        <label><input type="checkbox" disabled> O3</label>
+        <label><input type="checkbox" disabled> O2</label>
+        <label><input type="checkbox" disabled> O1</label>
+        <label><input type="checkbox" disabled> O0</label>
+      </div>
+    </div>
+
+    <!-- RAM View 2 -->
+    <div class="panel">
+      <h2>RAM View 2</h2>
+      <div class="mem-select">
+        <span>Chip:</span>
+        <select id="select2-1"><option value="0">0</option><option value="1">1</option><option value="2">2</option><option value="3">3</option></select>
+        <span>Reg:</span>
+        <select id="select2-2"><option value="0">0</option><option value="1">1</option><option value="2">2</option><option value="3">3</option></select>
+        <button name="reset" style="font-size:0.75em; padding:2px 8px;">RESET</button>
+      </div>
+      <div id="memory_1">
+        <table>
+          <tr><th>0</th><th>1</th><th>2</th><th>3</th><th>4</th><th>5</th><th>6</th><th>7</th><th>8</th><th>9</th><th>A</th><th>B</th><th>C</th><th>D</th><th>E</th><th>F</th></tr>
+          <tr><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+          <tr><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+          <tr><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+          <tr><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+        </table>
+      </div>
+      <h2 style="margin-top:6px;">Status</h2>
+      <div id="status_1">
+        <table>
+          <tr><th>S0</th><th>S1</th><th>S2</th><th>S3</th><th>S0</th><th>S1</th><th>S2</th><th>S3</th><th>S0</th><th>S1</th><th>S2</th><th>S3</th><th>S0</th><th>S1</th><th>S2</th><th>S3</th></tr>
+          <tr><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+        </table>
+      </div>
+      <h2 style="margin-top:6px;">Output Port</h2>
+      <div class="out-row" id="outputs_1">
+        <label><input type="checkbox" disabled> O3</label>
+        <label><input type="checkbox" disabled> O2</label>
+        <label><input type="checkbox" disabled> O1</label>
+        <label><input type="checkbox" disabled> O0</label>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Instruction Reference Panel -->
+<div class="panel" style="margin-bottom:10px;">
+  <h2 style="cursor:pointer;" onclick="var b=document.getElementById('refbody');b.style.display=b.style.display==='none'?'block':'none';">
+    &#9660; Instruction Reference &amp; How To Use
+  </h2>
+  <div id="refbody">
+
+    <div style="background:#1a2a1a;border:1px solid #3a6a3a;border-radius:4px;padding:8px 12px;margin-bottom:10px;font-size:0.82em;line-height:1.7;">
+      <b style="color:#8f8;">&#9654; How to set your own inputs</b><br>
+      <span style="color:#aaa;">
+        1. Click a <b>Sample Program</b> button to load the program into ROM.<br>
+        2. <b>Click any register cell</b> in the Registers table (R0, R1, R2…) — a prompt appears where you type your value in hex (0–F).<br>
+        3. Press <b>STEP</b> or <b>RUN</b>. The program will use your new register values as inputs.<br>
+        <span style="color:#777;">Alternatively: edit the second byte of the FIM instruction in the hex box (e.g. <code>20 53</code> → change <code>53</code> to set R0/R1), then hit LOAD again.</span>
+      </span>
+    </div>
+
+    <table style="width:100%;font-size:0.8em;margin-bottom:8px;">
+      <tr><th colspan="3" style="text-align:left;padding:4px 6px;background:#2a3a2a;color:#8f8;">Data Movement</th></tr>
+      <tr><td style="width:90px;color:#ff9;font-family:monospace;">FIM Pp, $XY</td><td style="color:#aaa;">Load immediate: R(2p)=X, R(2p+1)=Y. Used to set input values.</td><td style="color:#666;font-family:monospace;">20 XY</td></tr>
+      <tr><td style="color:#ff9;font-family:monospace;">LD Rr</td><td style="color:#aaa;">Load register Rr into accumulator (A = Rr).</td><td style="color:#666;font-family:monospace;">Ar</td></tr>
+      <tr><td style="color:#ff9;font-family:monospace;">XCH Rr</td><td style="color:#aaa;">Swap accumulator with register Rr (A ↔ Rr). Used to store results.</td><td style="color:#666;font-family:monospace;">Br</td></tr>
+      <tr><td style="color:#ff9;font-family:monospace;">LDM n</td><td style="color:#aaa;">Load 4-bit immediate constant n into accumulator (A = n).</td><td style="color:#666;font-family:monospace;">Dn</td></tr>
+      <tr><td style="color:#ff9;font-family:monospace;">SRC Pp</td><td style="color:#aaa;">Send register pair Pp as RAM/ROM address for memory ops.</td><td style="color:#666;font-family:monospace;">2p+1</td></tr>
+      <tr><td style="color:#ff9;font-family:monospace;">FIN Pp</td><td style="color:#aaa;">Fetch indirect: load byte from ROM address pointed to by P0 into Pp.</td><td style="color:#666;font-family:monospace;">3p</td></tr>
+
+      <tr><th colspan="3" style="text-align:left;padding:4px 6px;background:#2a3a2a;color:#8f8;">Arithmetic</th></tr>
+      <tr><td style="color:#ff9;font-family:monospace;">ADD Rr</td><td style="color:#aaa;">A = A + Rr + Carry. Sets Carry if result &gt; 0xF.</td><td style="color:#666;font-family:monospace;">8r</td></tr>
+      <tr><td style="color:#ff9;font-family:monospace;">SUB Rr</td><td style="color:#aaa;">A = A + (~Rr) + (~Carry). Use CLC before SUB for correct subtraction (A − Rr).</td><td style="color:#666;font-family:monospace;">9r</td></tr>
+      <tr><td style="color:#ff9;font-family:monospace;">INC Rr</td><td style="color:#aaa;">Increment register Rr by 1. Wraps 0xF → 0. Does not affect Carry.</td><td style="color:#666;font-family:monospace;">6r</td></tr>
+      <tr><td style="color:#ff9;font-family:monospace;">IAC</td><td style="color:#aaa;">Increment accumulator (A = A + 1). Sets Carry on overflow.</td><td style="color:#666;font-family:monospace;">F2</td></tr>
+      <tr><td style="color:#ff9;font-family:monospace;">DAC</td><td style="color:#aaa;">Decrement accumulator (A = A − 1). Sets Carry if no borrow (A was &gt; 0).</td><td style="color:#666;font-family:monospace;">F8</td></tr>
+      <tr><td style="color:#ff9;font-family:monospace;">DAA</td><td style="color:#aaa;">Decimal adjust accumulator for BCD arithmetic. Adds 6 if A&gt;9 or Carry set.</td><td style="color:#666;font-family:monospace;">FB</td></tr>
+      <tr><td style="color:#ff9;font-family:monospace;">ADM</td><td style="color:#aaa;">A = A + RAM[SRC] + Carry. Add from RAM cell pointed by SRC.</td><td style="color:#666;font-family:monospace;">EB</td></tr>
+      <tr><td style="color:#ff9;font-family:monospace;">SBM</td><td style="color:#aaa;">A = A + (~RAM[SRC]) + (~Carry). Subtract RAM cell from accumulator.</td><td style="color:#666;font-family:monospace;">E8</td></tr>
+
+      <tr><th colspan="3" style="text-align:left;padding:4px 6px;background:#2a3a2a;color:#8f8;">Carry &amp; Accumulator Flags</th></tr>
+      <tr><td style="color:#ff9;font-family:monospace;">CLC</td><td style="color:#aaa;">Clear Carry flag (Carry = 0). Required before ADD for clean addition, before SUB for correct subtraction.</td><td style="color:#666;font-family:monospace;">F1</td></tr>
+      <tr><td style="color:#ff9;font-family:monospace;">STC</td><td style="color:#aaa;">Set Carry flag (Carry = 1).</td><td style="color:#666;font-family:monospace;">FA</td></tr>
+      <tr><td style="color:#ff9;font-family:monospace;">CMC</td><td style="color:#aaa;">Complement (flip) Carry flag.</td><td style="color:#666;font-family:monospace;">F3</td></tr>
+      <tr><td style="color:#ff9;font-family:monospace;">CMA</td><td style="color:#aaa;">Complement accumulator (A = ~A, bitwise NOT of all 4 bits).</td><td style="color:#666;font-family:monospace;">F4</td></tr>
+      <tr><td style="color:#ff9;font-family:monospace;">CLB</td><td style="color:#aaa;">Clear both accumulator and Carry (A = 0, Carry = 0).</td><td style="color:#666;font-family:monospace;">F0</td></tr>
+      <tr><td style="color:#ff9;font-family:monospace;">TCC</td><td style="color:#aaa;">Transfer Carry to accumulator (A = Carry), then clear Carry. Used to propagate carry between nibbles.</td><td style="color:#666;font-family:monospace;">F7</td></tr>
+      <tr><td style="color:#ff9;font-family:monospace;">TCS</td><td style="color:#aaa;">Transfer Carry subtract: A = 9 + Carry, Carry = 0. Used for BCD borrow correction.</td><td style="color:#666;font-family:monospace;">F9</td></tr>
+
+      <tr><th colspan="3" style="text-align:left;padding:4px 6px;background:#2a3a2a;color:#8f8;">Shifts</th></tr>
+      <tr><td style="color:#ff9;font-family:monospace;">RAL</td><td style="color:#aaa;">Rotate accumulator left through Carry. Bit3→Carry, old Carry→Bit0. Effectively A×2.</td><td style="color:#666;font-family:monospace;">F5</td></tr>
+      <tr><td style="color:#ff9;font-family:monospace;">RAR</td><td style="color:#aaa;">Rotate accumulator right through Carry. Bit0→Carry, old Carry→Bit3. Effectively A÷2.</td><td style="color:#666;font-family:monospace;">F6</td></tr>
+
+      <tr><th colspan="3" style="text-align:left;padding:4px 6px;background:#2a3a2a;color:#8f8;">Jumps &amp; Branches</th></tr>
+      <tr><td style="color:#ff9;font-family:monospace;">JUN addr</td><td style="color:#aaa;">Unconditional jump to 12-bit address. Opcode = 4x, next byte = low 8 bits of address.</td><td style="color:#666;font-family:monospace;">4x LL</td></tr>
+      <tr><td style="color:#ff9;font-family:monospace;">JCN cond, addr</td><td style="color:#aaa;">Conditional jump. Condition bits: bit2=jump if A=0 (AZ), bit1=jump if Carry set (CN), bit1=jump if Test (TN). bit3 inverts all.</td><td style="color:#666;font-family:monospace;">1c LL</td></tr>
+      <tr><td style="color:#ff9;font-family:monospace;">ISZ Rr, addr</td><td style="color:#aaa;">Increment Rr; if Rr ≠ 0 jump to addr. Useful for counted loops without needing LD+JCN.</td><td style="color:#666;font-family:monospace;">7r LL</td></tr>
+      <tr><td style="color:#ff9;font-family:monospace;">JMS addr</td><td style="color:#aaa;">Jump to subroutine (push PC, jump). Stack depth is 3 levels.</td><td style="color:#666;font-family:monospace;">5x LL</td></tr>
+      <tr><td style="color:#ff9;font-family:monospace;">JIN Pp</td><td style="color:#aaa;">Jump indirect: PC low byte = register pair Pp value.</td><td style="color:#666;font-family:monospace;">3p+1</td></tr>
+      <tr><td style="color:#ff9;font-family:monospace;">BBL n</td><td style="color:#aaa;">Branch back and load: return from subroutine (pop PC), set A = n.</td><td style="color:#666;font-family:monospace;">Cn</td></tr>
+
+      <tr><th colspan="3" style="text-align:left;padding:4px 6px;background:#2a3a2a;color:#8f8;">RAM Memory</th></tr>
+      <tr><td style="color:#ff9;font-family:monospace;">WRM</td><td style="color:#aaa;">Write accumulator to RAM cell at address set by SRC.</td><td style="color:#666;font-family:monospace;">E0</td></tr>
+      <tr><td style="color:#ff9;font-family:monospace;">RDM</td><td style="color:#aaa;">Read RAM cell at SRC address into accumulator.</td><td style="color:#666;font-family:monospace;">E9</td></tr>
+      <tr><td style="color:#ff9;font-family:monospace;">WR0–WR3</td><td style="color:#aaa;">Write accumulator to RAM status register 0–3.</td><td style="color:#666;font-family:monospace;">E4–E7</td></tr>
+      <tr><td style="color:#ff9;font-family:monospace;">RD0–RD3</td><td style="color:#aaa;">Read RAM status register 0–3 into accumulator.</td><td style="color:#666;font-family:monospace;">EC–EF</td></tr>
+      <tr><td style="color:#ff9;font-family:monospace;">WMP</td><td style="color:#aaa;">Write accumulator to RAM output port (visible in Output Port panel).</td><td style="color:#666;font-family:monospace;">E1</td></tr>
+      <tr><td style="color:#ff9;font-family:monospace;">WRR</td><td style="color:#aaa;">Write accumulator to ROM output port (visible in ROM Port panel).</td><td style="color:#666;font-family:monospace;">E2</td></tr>
+      <tr><td style="color:#ff9;font-family:monospace;">RDR</td><td style="color:#aaa;">Read ROM input port into accumulator.</td><td style="color:#666;font-family:monospace;">EA</td></tr>
+      <tr><td style="color:#ff9;font-family:monospace;">DCL</td><td style="color:#aaa;">Designate command line: selects which RAM chip is active based on A bits 0–2.</td><td style="color:#666;font-family:monospace;">FD</td></tr>
+
+      <tr><th colspan="3" style="text-align:left;padding:4px 6px;background:#2a3a2a;color:#8f8;">Other</th></tr>
+      <tr><td style="color:#ff9;font-family:monospace;">NOP</td><td style="color:#aaa;">No operation. Does nothing for 1 cycle. Often used as program end marker.</td><td style="color:#666;font-family:monospace;">00</td></tr>
+      <tr><td style="color:#ff9;font-family:monospace;">KBP</td><td style="color:#aaa;">Keyboard process: converts single-bit keyboard scan value in A to key index (0–4, or 0xF for error).</td><td style="color:#666;font-family:monospace;">FC</td></tr>
+    </table>
+
+    <div style="background:#1a1a2a;border:1px solid #44558a;border-radius:4px;padding:8px 12px;font-size:0.8em;color:#aaa;line-height:1.6;">
+      <b style="color:#88f;">&#9654; JCN condition byte quick reference</b><br>
+      <code style="color:#ff9;">14</code> = jump if A=0 (AZ) &nbsp;|&nbsp;
+      <code style="color:#ff9;">12</code> = jump if Carry set (CN) &nbsp;|&nbsp;
+      <code style="color:#ff9;">11</code> = jump if Test pin set (TN)<br>
+      <code style="color:#ff9;">1C</code> = jump if A≠0 (ANZ) &nbsp;|&nbsp;
+      <code style="color:#ff9;">1A</code> = jump if Carry clear (CNZ) &nbsp;|&nbsp;
+      <code style="color:#ff9;">19</code> = jump if Test clear (TNZ)<br>
+      Condition bits: bit0=Test, bit1=Carry, bit2=A-zero, bit3=invert all.
+    </div>
+
+  </div>
+</div>
+
+<!-- Breakpoints floating window -->
+<div id="break"></div>
+
+<script>
+// ============================================================
+// main.js
+// ============================================================
+var debug = false;
+var A_reg, C_flag, T_flag;
+var PC_stack = new Array(4);
+var sp = 0;
+var R_regs = new Array(16);
+var cmram, ramaddr;
+var ph, pm, pl;
+var cmrom, romport;
+var prom = new Array(4096);
+var ramdata = new Array(16);
+for (var i = 0; i < 16; i++) {
+  ramdata[i] = new Array(4);
+  for (var j = 0; j < 4; j++) ramdata[i][j] = new Array(16);
+}
+var ramstatus = new Array(16);
+for (var i = 0; i < 16; i++) {
+  ramstatus[i] = new Array(4);
+  for (var j = 0; j < 4; j++) ramstatus[i][j] = new Array(4);
+}
+var ramout = new Array(16);
+var breakpoints = [];
+var temp;
+var testFlag = false, animFlag = false, runFlag = false, stepFlag = false;
+
+function incPC() { PC_stack[0]++; PC_stack[0] &= 0xfff; if (testFlag) PC_stack[0] &= 0xff; }
+function nextCode() { incPC(); return prom[PC_stack[0]] & 0xff; }
+function activeCode() { return prom[PC_stack[0]] & 0xff; }
+function setRpar(rpar, pset) { R_regs[2 * rpar + 1] = pset & 0xf; R_regs[2 * rpar] = (pset >> 4) & 0xf; }
+function getRpar(rpar) { return ((R_regs[2 * rpar] << 4) & 0xf0 | R_regs[2 * rpar + 1] & 0xf); }
+
+function ramAdrDecoder() {
+  switch (cmram) {
+    case 1: ph = ramaddr >> 6; break;
+    case 2: ph = 0x4 | ramaddr >> 6; break;
+    case 4: ph = 0x8 | ramaddr >> 6; break;
+    case 8: ph = 0xC | ramaddr >> 6; break;
+  }
+  if (testFlag) ph &= 0x1;
+  pm = (ramaddr & 0x30) >> 4;
+  pl = ramaddr & 0xf;
+}
+
+function opJCN(cond) { var invert = 0; if (cond & 0x8) invert = 1; temp = PC_stack[0] & 0xf00; temp |= nextCode(); incPC(); if (cond & 0x4) { if ((!A_reg) ^ invert) PC_stack[0] = temp; } if (cond & 0x2) { if ((C_flag) ^ invert) PC_stack[0] = temp; } if (cond & 0x1) { if ((T_flag) ^ invert) PC_stack[0] = temp; } }
+function opFIM(rpar) { setRpar(rpar, nextCode()); incPC(); }
+function opSRC(rpar) { ramaddr = getRpar(rpar); incPC(); }
+function opFIN(rpar) { setRpar(rpar, prom[(PC_stack[0] & 0xf00) | getRpar(0)]); incPC(); }
+function opJIN(rpar) { PC_stack[0] = (PC_stack[0] & 0xf00) | getRpar(rpar); if (testFlag) PC_stack[0] &= 0xff; }
+function opJUN(addr) { PC_stack[0] = addr | nextCode(); if (testFlag) PC_stack[0] &= 0xff; }
+function opJMS(addr) { temp = addr | nextCode(); if (sp < 3) { sp++; for (var i = sp; i > 0; i--) PC_stack[i] = PC_stack[i - 1]; PC_stack[0] = temp; if (testFlag) PC_stack[0] &= 0xff; } else { incPC(); if (debug) alert('Stack overflow'); } }
+function opINC(reg) { R_regs[reg]++; if (R_regs[reg] & 0xf0) R_regs[reg] = 0; incPC(); }
+function opISZ(reg) { temp = nextCode(); R_regs[reg] = (R_regs[reg] + 1) & 0xf; if (R_regs[reg]) PC_stack[0] = (PC_stack[0] & 0xf00) | temp; else incPC(); }
+function opADD(reg) { A_reg = A_reg + R_regs[reg] + C_flag; C_flag = 0; if (A_reg & 0xf0) { A_reg &= 0xf; C_flag = 1; } incPC(); }
+function opSUB(reg) { A_reg = A_reg + (~R_regs[reg] & 0xf) + (~C_flag & 1); C_flag = 0; if (A_reg & 0xf0) { A_reg &= 0xf; C_flag = 1; } incPC(); }
+function opLD(reg) { A_reg = R_regs[reg]; incPC(); }
+function opXCH(reg) { temp = A_reg; A_reg = R_regs[reg]; R_regs[reg] = temp; incPC(); }
+function opBBL(data) { if (sp > 0) { for (var i = 0; i < sp; i++) PC_stack[i] = PC_stack[i + 1]; PC_stack[sp] = 0; sp--; A_reg = data; } else { if (debug) alert('Stack error'); } incPC(); }
+function opLDM(data) { A_reg = data; incPC(); }
+function opWRM() { ramAdrDecoder(); ramdata[ph][pm][pl] = A_reg; incPC(); }
+function opWMP() { ramAdrDecoder(); ramout[ph] = A_reg; if (testFlag) T_flag = ramout[0] & 0x1; incPC(); }
+function opWRR() { romport = A_reg; incPC(); }
+function opWR(status) { ramAdrDecoder(); ramstatus[ph][pm][status] = A_reg; incPC(); }
+function opSBM() { ramAdrDecoder(); A_reg = A_reg + ((~ramdata[ph][pm][pl]) & 0xf) + (~C_flag & 1); C_flag = 0; if (A_reg & 0xf0) { A_reg &= 0xf; C_flag = 1; } incPC(); }
+function opRDM() { ramAdrDecoder(); A_reg = ramdata[ph][pm][pl]; incPC(); }
+function opRDR() { if (testFlag) romport = ramout[1]; A_reg = romport; incPC(); }
+function opADM() { ramAdrDecoder(); A_reg = A_reg + ramdata[ph][pm][pl] + C_flag; C_flag = 0; if (A_reg & 0xf0) { A_reg &= 0xf; C_flag = 1; } incPC(); }
+function opRD(status) { ramAdrDecoder(); A_reg = ramstatus[ph][pm][status]; incPC(); }
+function opCLB() { A_reg = 0; C_flag = 0; incPC(); }
+function opCLC() { C_flag = 0; incPC(); }
+function opIAC() { A_reg++; C_flag = 0; if (A_reg & 0xf0) { A_reg &= 0xf; C_flag = 1; } incPC(); }
+function opCMC() { C_flag = (C_flag == 1) ? 0 : 1; incPC(); }
+function opCMA() { A_reg = (~A_reg) & 0xf; incPC(); }
+function opRAL() { A_reg = (A_reg << 1) | C_flag; C_flag = 0; if (A_reg & 0xf0) { A_reg &= 0xf; C_flag = 1; } incPC(); }
+function opRAR() { temp = A_reg & 1; A_reg = (A_reg >> 1) | (C_flag << 3); C_flag = temp; incPC(); }
+function opTCC() { A_reg = C_flag; C_flag = 0; incPC(); }
+function opDAC() { A_reg += 0xf; C_flag = 0; if (A_reg & 0xf0) { A_reg &= 0xf; C_flag = 1; } incPC(); }
+function opTCS() { A_reg = 9 + C_flag; C_flag = 0; incPC(); }
+function opSTC() { C_flag = 1; incPC(); }
+function opDAA() { if (A_reg > 9 || C_flag == 1) A_reg += 6; if (A_reg & 0xf0) { A_reg &= 0xf; C_flag = 1; } incPC(); }
+function opKBP() { switch (A_reg) { case 0: A_reg = 0; break; case 1: A_reg = 1; break; case 2: A_reg = 2; break; case 4: A_reg = 3; break; case 8: A_reg = 4; break; default: A_reg = 15; break; } incPC(); }
+function opDCL() { switch (A_reg & 0x7) { case 0: cmram = 1; break; case 1: cmram = 2; break; case 2: cmram = 4; break; case 3: cmram = 3; break; case 4: cmram = 8; break; case 5: cmram = 10; break; case 6: cmram = 12; break; case 7: cmram = 14; break; } incPC(); }
+
+function i00() { incPC(); }
+function i10() { opJCN(0); } function i11() { opJCN(1); } function i12() { opJCN(2); } function i13() { opJCN(3); }
+function i14() { opJCN(4); } function i15() { opJCN(5); } function i16() { opJCN(6); } function i17() { opJCN(7); }
+function i18() { opJCN(8); } function i19() { opJCN(9); } function i1a() { opJCN(10); } function i1b() { opJCN(11); }
+function i1c() { opJCN(12); } function i1d() { opJCN(13); } function i1e() { opJCN(14); } function i1f() { opJCN(15); }
+function i20() { opFIM(0); } function i21() { opSRC(0); } function i22() { opFIM(1); } function i23() { opSRC(1); }
+function i24() { opFIM(2); } function i25() { opSRC(2); } function i26() { opFIM(3); } function i27() { opSRC(3); }
+function i28() { opFIM(4); } function i29() { opSRC(4); } function i2a() { opFIM(5); } function i2b() { opSRC(5); }
+function i2c() { opFIM(6); } function i2d() { opSRC(6); } function i2e() { opFIM(7); } function i2f() { opSRC(7); }
+function i30() { opFIN(0); } function i31() { opJIN(0); } function i32() { opFIN(1); } function i33() { opJIN(1); }
+function i34() { opFIN(2); } function i35() { opJIN(2); } function i36() { opFIN(3); } function i37() { opJIN(3); }
+function i38() { opFIN(4); } function i39() { opJIN(4); } function i3a() { opFIN(5); } function i3b() { opJIN(5); }
+function i3c() { opFIN(6); } function i3d() { opJIN(6); } function i3e() { opFIN(7); } function i3f() { opJIN(7); }
+function i40() { opJUN(0x000); } function i41() { opJUN(0x100); } function i42() { opJUN(0x200); } function i43() { opJUN(0x300); }
+function i44() { opJUN(0x400); } function i45() { opJUN(0x500); } function i46() { opJUN(0x600); } function i47() { opJUN(0x700); }
+function i48() { opJUN(0x800); } function i49() { opJUN(0x900); } function i4a() { opJUN(0xa00); } function i4b() { opJUN(0xb00); }
+function i4c() { opJUN(0xc00); } function i4d() { opJUN(0xd00); } function i4e() { opJUN(0xe00); } function i4f() { opJUN(0xf00); }
+function i50() { opJMS(0x000); } function i51() { opJMS(0x100); } function i52() { opJMS(0x200); } function i53() { opJMS(0x300); }
+function i54() { opJMS(0x400); } function i55() { opJMS(0x500); } function i56() { opJMS(0x600); } function i57() { opJMS(0x700); }
+function i58() { opJMS(0x800); } function i59() { opJMS(0x900); } function i5a() { opJMS(0xa00); } function i5b() { opJMS(0xb00); }
+function i5c() { opJMS(0xc00); } function i5d() { opJMS(0xd00); } function i5e() { opJMS(0xe00); } function i5f() { opJMS(0xf00); }
+function i60() { opINC(0); } function i61() { opINC(1); } function i62() { opINC(2); } function i63() { opINC(3); }
+function i64() { opINC(4); } function i65() { opINC(5); } function i66() { opINC(6); } function i67() { opINC(7); }
+function i68() { opINC(8); } function i69() { opINC(9); } function i6a() { opINC(10); } function i6b() { opINC(11); }
+function i6c() { opINC(12); } function i6d() { opINC(13); } function i6e() { opINC(14); } function i6f() { opINC(15); }
+function i70() { opISZ(0); } function i71() { opISZ(1); } function i72() { opISZ(2); } function i73() { opISZ(3); }
+function i74() { opISZ(4); } function i75() { opISZ(5); } function i76() { opISZ(6); } function i77() { opISZ(7); }
+function i78() { opISZ(8); } function i79() { opISZ(9); } function i7a() { opISZ(10); } function i7b() { opISZ(11); }
+function i7c() { opISZ(12); } function i7d() { opISZ(13); } function i7e() { opISZ(14); } function i7f() { opISZ(15); }
+function i80() { opADD(0); } function i81() { opADD(1); } function i82() { opADD(2); } function i83() { opADD(3); }
+function i84() { opADD(4); } function i85() { opADD(5); } function i86() { opADD(6); } function i87() { opADD(7); }
+function i88() { opADD(8); } function i89() { opADD(9); } function i8a() { opADD(10); } function i8b() { opADD(11); }
+function i8c() { opADD(12); } function i8d() { opADD(13); } function i8e() { opADD(14); } function i8f() { opADD(15); }
+function i90() { opSUB(0); } function i91() { opSUB(1); } function i92() { opSUB(2); } function i93() { opSUB(3); }
+function i94() { opSUB(4); } function i95() { opSUB(5); } function i96() { opSUB(6); } function i97() { opSUB(7); }
+function i98() { opSUB(8); } function i99() { opSUB(9); } function i9a() { opSUB(10); } function i9b() { opSUB(11); }
+function i9c() { opSUB(12); } function i9d() { opSUB(13); } function i9e() { opSUB(14); } function i9f() { opSUB(15); }
+function ia0() { opLD(0); } function ia1() { opLD(1); } function ia2() { opLD(2); } function ia3() { opLD(3); }
+function ia4() { opLD(4); } function ia5() { opLD(5); } function ia6() { opLD(6); } function ia7() { opLD(7); }
+function ia8() { opLD(8); } function ia9() { opLD(9); } function iaa() { opLD(10); } function iab() { opLD(11); }
+function iac() { opLD(12); } function iad() { opLD(13); } function iae() { opLD(14); } function iaf() { opLD(15); }
+function ib0() { opXCH(0); } function ib1() { opXCH(1); } function ib2() { opXCH(2); } function ib3() { opXCH(3); }
+function ib4() { opXCH(4); } function ib5() { opXCH(5); } function ib6() { opXCH(6); } function ib7() { opXCH(7); }
+function ib8() { opXCH(8); } function ib9() { opXCH(9); } function iba() { opXCH(10); } function ibb() { opXCH(11); }
+function ibc() { opXCH(12); } function ibd() { opXCH(13); } function ibe() { opXCH(14); } function ibf() { opXCH(15); }
+function ic0() { opBBL(0); } function ic1() { opBBL(1); } function ic2() { opBBL(2); } function ic3() { opBBL(3); }
+function ic4() { opBBL(4); } function ic5() { opBBL(5); } function ic6() { opBBL(6); } function ic7() { opBBL(7); }
+function ic8() { opBBL(8); } function ic9() { opBBL(9); } function ica() { opBBL(10); } function icb() { opBBL(11); }
+function icc() { opBBL(12); } function icd() { opBBL(13); } function ice() { opBBL(14); } function icf() { opBBL(15); }
+function id0() { opLDM(0); } function id1() { opLDM(1); } function id2() { opLDM(2); } function id3() { opLDM(3); }
+function id4() { opLDM(4); } function id5() { opLDM(5); } function id6() { opLDM(6); } function id7() { opLDM(7); }
+function id8() { opLDM(8); } function id9() { opLDM(9); } function ida() { opLDM(10); } function idb() { opLDM(11); }
+function idc() { opLDM(12); } function idd() { opLDM(13); } function ide() { opLDM(14); } function idf() { opLDM(15); }
+function ie0() { opWRM(); } function ie1() { opWMP(); } function ie2() { opWRR(); }
+function ie4() { opWR(0); } function ie5() { opWR(1); } function ie6() { opWR(2); } function ie7() { opWR(3); }
+function ie8() { opSBM(); } function ie9() { opRDM(); } function iea() { opRDR(); } function ieb() { opADM(); }
+function iec() { opRD(0); } function ied() { opRD(1); } function iee() { opRD(2); } function ief() { opRD(3); }
+function if0() { opCLB(); } function if1() { opCLC(); } function if2() { opIAC(); } function if3() { opCMC(); }
+function if4() { opCMA(); } function if5() { opRAL(); } function if6() { opRAR(); } function if7() { opTCC(); }
+function if8() { opDAC(); } function if9() { opTCS(); } function ifa() { opSTC(); } function ifb() { opDAA(); }
+function ifc() { opKBP(); } function ifd() { opDCL(); }
+function ini() { if (debug) alert('Not implemented'); incPC(); }
+
+var codes = [
+  i00, ini, ini, ini, ini, ini, ini, ini, ini, ini, ini, ini, ini, ini, ini, ini,
+  i10, i11, i12, i13, i14, i15, i16, i17, i18, i19, i1a, i1b, i1c, i1d, i1e, i1f,
+  i20, i21, i22, i23, i24, i25, i26, i27, i28, i29, i2a, i2b, i2c, i2d, i2e, i2f,
+  i30, i31, i32, i33, i34, i35, i36, i37, i38, i39, i3a, i3b, i3c, i3d, i3e, i3f,
+  i40, i41, i42, i43, i44, i45, i46, i47, i48, i49, i4a, i4b, i4c, i4d, i4e, i4f,
+  i50, i51, i52, i53, i54, i55, i56, i57, i58, i59, i5a, i5b, i5c, i5d, i5e, i5f,
+  i60, i61, i62, i63, i64, i65, i66, i67, i68, i69, i6a, i6b, i6c, i6d, i6e, i6f,
+  i70, i71, i72, i73, i74, i75, i76, i77, i78, i79, i7a, i7b, i7c, i7d, i7e, i7f,
+  i80, i81, i82, i83, i84, i85, i86, i87, i88, i89, i8a, i8b, i8c, i8d, i8e, i8f,
+  i90, i91, i92, i93, i94, i95, i96, i97, i98, i99, i9a, i9b, i9c, i9d, i9e, i9f,
+  ia0, ia1, ia2, ia3, ia4, ia5, ia6, ia7, ia8, ia9, iaa, iab, iac, iad, iae, iaf,
+  ib0, ib1, ib2, ib3, ib4, ib5, ib6, ib7, ib8, ib9, iba, ibb, ibc, ibd, ibe, ibf,
+  ic0, ic1, ic2, ic3, ic4, ic5, ic6, ic7, ic8, ic9, ica, icb, icc, icd, ice, icf,
+  id0, id1, id2, id3, id4, id5, id6, id7, id8, id9, ida, idb, idc, idd, ide, idf,
+  ie0, ie1, ie2, ini, ie4, ie5, ie6, ie7, ie8, ie9, iea, ieb, iec, ied, iee, ief,
+  if0, if1, if2, if3, if4, if5, if6, if7, if8, if9, ifa, ifb, ifc, ifd, ini, ini
+];
+
+var cycles = [
+  1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1, 2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,
+  2,1,2,1,2,1,2,1,2,1,2,1,2,1,2,1, 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
+  2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2, 2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,
+  1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1, 2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,
+  1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
+  1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
+  1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
+  1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+];
+
+var cpuCycles;
+
+function mainLoop() {
+  if (stepFlag) { cpuLoop(1); stepFlag = false; }
+  if (animFlag) { cpuLoop(1); }
+  if (runFlag) { cpuLoop(12500); }
+  setTimeout(mainLoop, 0);
+}
+
+function cpuLoop(cycleLimit) {
+  var code;
+  cycleLimit += cpuCycles;
+  while (cpuCycles < cycleLimit) {
+    code = activeCode();
+    codes[code]();
+    cpuCycles += cycles[code];
+    if (breakpoints.indexOf(getHexAddr(PC_stack[0])) != -1 && !stepFlag) {
+      alert("Stop at: " + getHexAddr(PC_stack[0]) + " (breakpoint)");
+      animFlag = false; runFlag = false; break;
+    }
+  }
+  changeAll();
+}
+
+function resetCPU() {
+  A_reg = C_flag = T_flag = 0;
+  PC_stack = [0, 0, 0, 0]; sp = 0;
+  for (var i = 0; i < 16; i++) R_regs[i] = 0;
+  cmram = 1; ramaddr = 0; cmrom = 0;
+  animFlag = false; runFlag = false; stepFlag = false;
+  cpuCycles = 0;
+}
+
+function clearRAM() {
+  for (var i = 0; i < 16; i++)
+    for (var j = 0; j < 4; j++) {
+      for (var k = 0; k < 16; k++) ramdata[i][j][k] = 0;
+      for (var k = 0; k < 4; k++) ramstatus[i][j][k] = 0;
+    }
+  for (var i = 0; i < 16; i++) ramout[i] = 0;
+}
+
+function clearROM() {
+  for (var i = 0; i <= 0xfff; ++i) prom[i] = 0;
+  romport = 0;
+}
+
+function reset() { resetCPU(); clearRAM(); clearROM(); changeAll(); }
+
+// ============================================================
+// emu_comm.js
+// ============================================================
+var hextab = ['0','1','2','3','4','5','6','7','8','9','A','B','C','D','E','F'];
+
+var opctab = [
+  'NOP','???','???','???','???','???','???','???','???','???','???','???','???','???','???','???',
+  '???','JCN TZ','JCN CZ','???','JCN AZ','???','???','???','???','JCN TN','JCN CN','???','JCN AN','???','???','???',
+  'FIM P0','SRC P0','FIM P1','SRC P1','FIM P2','SRC P2','FIM P3','SRC P3','FIM P4','SRC P4','FIM P5','SRC P5','FIM P6','SRC P6','FIM P7','SRC P7',
+  'FIN P0','JIN P0','FIN P1','JIN P1','FIN P2','JIN P2','FIN P3','JIN P3','FIN P4','JIN P4','FIN P5','JIN P5','FIN P6','JIN P6','FIN P7','JIN P7',
+  'JUN','JUN','JUN','JUN','JUN','JUN','JUN','JUN','JUN','JUN','JUN','JUN','JUN','JUN','JUN','JUN',
+  'JMS','JMS','JMS','JMS','JMS','JMS','JMS','JMS','JMS','JMS','JMS','JMS','JMS','JMS','JMS','JMS',
+  'INC R0','INC R1','INC R2','INC R3','INC R4','INC R5','INC R6','INC R7','INC R8','INC R9','INC R10','INC R11','INC R12','INC R13','INC R14','INC R15',
+  'ISZ R0','ISZ R1','ISZ R2','ISZ R3','ISZ R4','ISZ R5','ISZ R6','ISZ R7','ISZ R8','ISZ R9','ISZ R10','ISZ R11','ISZ R12','ISZ R13','ISZ R14','ISZ R15',
+  'ADD R0','ADD R1','ADD R2','ADD R3','ADD R4','ADD R5','ADD R6','ADD R7','ADD R8','ADD R9','ADD R10','ADD R11','ADD R12','ADD R13','ADD R14','ADD R15',
+  'SUB R0','SUB R1','SUB R2','SUB R3','SUB R4','SUB R5','SUB R6','SUB R7','SUB R8','SUB R9','SUB R10','SUB R11','SUB R12','SUB R13','SUB R14','SUB R15',
+  'LD R0','LD R1','LD R2','LD R3','LD R4','LD R5','LD R6','LD R7','LD R8','LD R9','LD R10','LD R11','LD R12','LD R13','LD R14','LD R15',
+  'XCH R0','XCH R1','XCH R2','XCH R3','XCH R4','XCH R5','XCH R6','XCH R7','XCH R8','XCH R9','XCH R10','XCH R11','XCH R12','XCH R13','XCH R14','XCH R15',
+  'BBL 0','BBL 1','BBL 2','BBL 3','BBL 4','BBL 5','BBL 6','BBL 7','BBL 8','BBL 9','BBL 10','BBL 11','BBL 12','BBL 13','BBL 14','BBL 15',
+  'LDM 0','LDM 1','LDM 2','LDM 3','LDM 4','LDM 5','LDM 6','LDM 7','LDM 8','LDM 9','LDM 10','LDM 11','LDM 12','LDM 13','LDM 14','LDM 15',
+  'WRM','WMP','WRR','WPM','WR0','WR1','WR2','WR3','SBM','RDM','RDR','ADM','RD0','RD1','RD2','RD3',
+  'CLB','CLC','IAC','CMC','CMA','RAL','RAR','TCC','DAC','TCS','STC','DAA','KBP','DCL','???','???'
+];
+
+var steptab = [
+  1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1, 2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,
+  2,1,2,1,2,1,2,1,2,1,2,1,2,1,2,1, 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
+  2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2, 2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,
+  1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1, 2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,
+  1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
+  1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
+  1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
+  1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+];
+
+var endAddr = 0;
+var disArray = [];
+
+var pcElements, registersElements, accuElement, carryElement, testElement, cyclesElement;
+var memory0Elements, memory1Elements, status0Elements, status1Elements;
+var outputs0Elements, outputs1Elements, portElement, disasmSpans;
+var select00, select01, select10, select11;
+
+function getHexByte(data) { return '' + hextab[Math.floor(data / 0x10)] + hextab[data & 0x0f]; }
+function getHexAddr(data) { return '' + hextab[Math.floor((data & 0x0f00) / 0x100)] + hextab[Math.floor((data & 0x0f0) / 0x10)] + hextab[data & 0x00f]; }
+
+function DisAsmStep(pc) {
+  var instr = prom[pc];
+  var addr = getHexAddr(pc);
+  var ops1 = getHexByte(instr);
+  var ops2 = '  ';
+  var disas = opctab[instr] || '???';
+  if (steptab[instr] > 1) {
+    ops2 = getHexByte(prom[pc + 1]);
+    if (instr > 0x3f && instr < 0x60) disas += ' $' + getHexAddr(((instr << 8) & 0xf00) | prom[pc + 1]);
+    else disas += ',$' + getHexByte(prom[pc + 1]);
+  }
+  return [addr, ops1, ops2, disas];
+}
+
+function getRam(what) {
+  return what == 0
+    ? parseInt(select00.value) * 4 + parseInt(select01.value)
+    : parseInt(select10.value) * 4 + parseInt(select11.value);
+}
+
+function load(data, address) {
+  var i, j = false;
+  address = address || 0;
+  if (typeof address === 'string') address = parseInt(address, 16);
+  data = data.toUpperCase();
+  for (i = 0; i < data.length; ++i) {
+    if (data[i] == '*' && data[i+1] == '=' && data[i+2] == '$') {
+      address = parseInt(data[i+3]+data[i+4]+data[i+5]+data[i+6], 16);
+      i += 7; j = false;
+    }
+    if ((data[i] >= '0' && data[i] <= '9') || (data[i] >= 'A' && data[i] <= 'F')) {
+      if (j === false) j = parseInt(data[i], 16);
+      else { prom[address++ % 0x1000] = j * 0x10 + parseInt(data[i], 16); j = false; }
+    }
+  }
+  endAddr = address;
+  generateDisArray();
+  show();
+}
+
+function generateDisArray() {
+  disArray = [];
+  var addr = 0, i = 0, dasm;
+  while (addr < endAddr) {
+    dasm = DisAsmStep(addr);
+    if (dasm[2] != '  ') addr++;
+    disArray[i++] = [dasm[0], dasm[1] + ' ' + dasm[2], dasm[3], false];
+    addr++;
+  }
+  if (disasmSpans && disArray[0]) {
+    disasmSpans[0].innerHTML = disArray[0][0] + ' ' + disArray[0][1];
+    disasmSpans[1].innerHTML = disArray[0][2];
+  }
+}
+
+function generateBPArray() {
+  breakpoints = [];
+  var bps = 0;
+  for (var i in disArray) if (disArray[i][3]) breakpoints[bps++] = disArray[i][0];
+}
+
+function show() {
+  var isDASM = document.getElementById('dasm').checked;
+  var isAscii = document.getElementById('ascii').checked;
+  var el = document.getElementById('data');
+  var val = '', ascii = '', i, itemp;
+  if (isDASM) {
+    for (i in disArray) { itemp = disArray[i]; val += itemp[0] + ' ' + itemp[1] + ' ' + itemp[2] + '\n'; }
+  } else {
+    itemp = ((endAddr + 7) >> 3) << 3;
+    for (i = 0; i < itemp; i++) {
+      if (i % 8 == 0) {
+        if (isAscii && i != 0) val += ' ;' + ascii;
+        ascii = '';
+        if (i != 0) val += '\n';
+        val += hextab[(i & 0xf00) >> 8] + hextab[(i & 0xf0) >> 4] + hextab[i & 0xf] + ': ';
+      }
+      val += getHexByte(prom[i]) + ' ';
+      if (isAscii) {
+        var c = prom[i];
+        ascii += (c >= 32 && c < 127) ? String.fromCharCode(c) : '.';
+      }
+    }
+    if (isAscii) val += ' ;' + ascii;
+  }
+  el.value = val;
+}
+
+function _pc(isChange, j) {
+  if (isChange) {
+    var val = prompt('Enter address [000-FFF]:', '');
+    if (!val) return;
+    var v = parseInt(val, 16);
+    if (isNaN(v) || v < 0 || v > 0xfff) return;
+    PC_stack[j] = v;
+  }
+  for (var s = 0; s < 4; s++) {
+    pcElements[s * 3].innerHTML     = hextab[Math.floor((PC_stack[s] & 0xf00) / 0x100)];
+    pcElements[s * 3 + 1].innerHTML = hextab[Math.floor((PC_stack[s] & 0x0f0) / 0x10)];
+    pcElements[s * 3 + 2].innerHTML = hextab[PC_stack[s] & 0x00f];
+  }
+}
+
+function _registers(isChange) {
+  if (isChange) {
+    var val = prompt('Enter value [0-F]:', '');
+    if (!val) return;
+  }
+  for (var i = 0; i < 16; i++) {
+    if (registersElements[i]) registersElements[i].innerHTML = R_regs[i].toString(16).toUpperCase();
+  }
+}
+
+function _accu(isChange) {
+  if (isChange) {
+    var val = prompt('Enter value [0-F]:', '');
+    if (!val) return;
+    A_reg = parseInt(val, 16) & 0xf;
+  }
+  var b = accuElement ? accuElement.getElementsByTagName('b')[0] : null;
+  if (b) b.innerHTML = A_reg.toString(16).toUpperCase() + ' ['
+    + ((A_reg & 0x8) ? '1' : '0') + ((A_reg & 0x4) ? '1' : '0')
+    + ((A_reg & 0x2) ? '1' : '0') + ((A_reg & 0x1) ? '1' : '0') + ']';
+}
+
+function _carry(isChange) {
+  if (isChange) C_flag = C_flag ? 0 : 1;
+  if (carryElement) carryElement.checked = !!C_flag;
+}
+
+function _test(isChange) {
+  if (isChange) T_flag = T_flag ? 0 : 1;
+  if (testElement) testElement.checked = !!T_flag;
+}
+
+function _cycles() {
+  if (cyclesElement) cyclesElement.innerHTML = '<b>CYCLES:</b> ' + cpuCycles;
+}
+
+function _disAsm() {
+  if (!disasmSpans) return;
+  var j = DisAsmStep(PC_stack[0]);
+  disasmSpans[0].innerHTML = j[0] + ' ' + j[1] + ' ' + j[2];
+  disasmSpans[1].innerHTML = j[3];
+}
+
+function _port() {
+  if (!portElement) return;
+  portElement[0].checked = !!(romport & 0x8);
+  portElement[1].checked = !!(romport & 0x4);
+  portElement[2].checked = !!(romport & 0x2);
+  portElement[3].checked = !!(romport & 0x1);
+}
+
+function _memory(isChange, what, td, k) {
+  var tds = what == 0 ? memory0Elements : memory1Elements;
+  if (!tds) return;
+  if (isChange) {
+    var val = prompt('Enter value [0-F]:', '');
+    if (!val) return;
+    var row = 0;
+    while (k > 0xf) { row++; k -= 0x10; }
+    ramdata[getRam(what)][row][k] = parseInt(val, 16);
+    td.innerHTML = val.toUpperCase();
+  } else {
+    var row = 0, col = 0;
+    for (var i = 0; tds[i]; i++) {
+      tds[i].innerHTML = (ramdata[getRam(what)][row][col] || 0).toString(16).toUpperCase();
+      col++;
+      if (col == 16) { col = 0; row++; }
+    }
+  }
+}
+
+function _status(isChange, what, td, k) {
+  var tds = what == 0 ? status0Elements : status1Elements;
+  if (!tds) return;
+  if (isChange) {
+    var val = prompt('Enter value [0-F]:', '');
+    if (!val) return;
+    var row = 0;
+    while (k > 3) { row++; k -= 4; }
+    ramstatus[getRam(what)][row][k] = parseInt(val, 16);
+    td.innerHTML = val.toUpperCase();
+  } else {
+    var row = 0, col = 0;
+    for (var i = 0; tds[i]; i++) {
+      tds[i].innerHTML = (ramstatus[getRam(what)][row][col] || 0).toString(16).toUpperCase();
+      col++;
+      if (col == 4) { col = 0; row++; }
+    }
+  }
+}
+
+function _outputs(isChange, what) {
+  var el = what == 0 ? outputs0Elements : outputs1Elements;
+  if (!el) return;
+  var v = ramout[getRam(what)] || 0;
+  el[0].checked = !!(v & 0x8);
+  el[1].checked = !!(v & 0x4);
+  el[2].checked = !!(v & 0x2);
+  el[3].checked = !!(v & 0x1);
+}
+
+function setRam(what) {
+  _memory(false, what);
+  _status(false, what);
+  _outputs(false, what);
+
+  var tds = what == 0 ? memory0Elements : memory1Elements;
+  for (var i = 0; tds[i]; i++) {
+    (function(idx) {
+      tds[idx].onclick = function() { _memory(true, what, this, idx); };
+    })(i);
+  }
+
+  var stds = what == 0 ? status0Elements : status1Elements;
+  for (var i = 0; stds[i]; i++) {
+    (function(idx) {
+      stds[idx].onclick = function() { _status(true, what, this, idx); };
+    })(i);
+  }
+}
+
+function resetRam(what) {
+  var chip = getRam(what);
+  ramdata[chip] = [[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]];
+  ramstatus[chip] = [[0,0,0,0],[0,0,0,0],[0,0,0,0],[0,0,0,0]];
+  ramout[chip] = 0;
+  _memory(false, what);
+  _status(false, what);
+  _outputs(false, what);
+}
+
+function changeAll() {
+  _pc(false);
+  _registers(false);
+  _accu(false);
+  _carry(false);
+  _test(false);
+  _cycles();
+  _disAsm();
+  _port();
+  _memory(false, 0);
+  _status(false, 0);
+  _outputs(false, 0);
+  _memory(false, 1);
+  _status(false, 1);
+  _outputs(false, 1);
+}
+
+function newElement(tag, parent, opts) {
+  var el = document.createElement(tag);
+  parent.appendChild(el);
+  if (opts) for (var k in opts) el[k] = opts[k];
+  return el;
+}
+
+window.onload = function () {
+  pcElements        = document.getElementById('pc').getElementsByTagName('td');
+  registersElements = document.getElementById('registers').getElementsByTagName('td');
+  accuElement       = document.getElementById('accu');
+  carryElement      = document.getElementById('carry').getElementsByTagName('input')[0];
+  testElement       = document.getElementById('test').getElementsByTagName('input')[0];
+  cyclesElement     = document.getElementById('cycles');
+  memory0Elements   = document.getElementById('memory_0').getElementsByTagName('td');
+  memory1Elements   = document.getElementById('memory_1').getElementsByTagName('td');
+  status0Elements   = document.getElementById('status_0').getElementsByTagName('td');
+  status1Elements   = document.getElementById('status_1').getElementsByTagName('td');
+  outputs0Elements  = document.getElementById('outputs_0').getElementsByTagName('input');
+  outputs1Elements  = document.getElementById('outputs_1').getElementsByTagName('input');
+  portElement       = document.getElementById('port').getElementsByTagName('input');
+  disasmSpans       = document.getElementById('dassem').getElementsByTagName('span');
+  select00 = document.getElementById('select1-1');
+  select01 = document.getElementById('select1-2');
+  select10 = document.getElementById('select2-1');
+  select11 = document.getElementById('select2-2');
+
+  // PC cells clickable
+  for (var i = 0; i < 12; i++) {
+    (function(idx) {
+      pcElements[idx].onclick = function() { _pc(true, Math.floor(idx / 3)); changeAll(); };
+    })(i);
+  }
+
+  // Register cells clickable — edit the correct register
+  for (var i = 0; i < 16; i++) {
+    (function(idx) {
+      // rows: row0=R0-R7 (tds 0-7), row1=R8-R15 (tds 8-15)
+      // but table has 2 header rows and 2 data rows, so tds are only data cells
+      if (registersElements[idx]) {
+        registersElements[idx].onclick = function() {
+          var val = prompt('Set R' + idx + ' value [0-F]:', R_regs[idx].toString(16).toUpperCase());
+          if (val === null) return;
+          var v = parseInt(val, 16);
+          if (isNaN(v) || v < 0 || v > 0xf) { alert('Invalid. Enter 0-F'); return; }
+          R_regs[idx] = v;
+          changeAll();
+        };
+      }
+    })(i);
+  }
+
+  accuElement.onclick  = function() { _accu(true); changeAll(); };
+  document.getElementById('carry').onclick = function() { _carry(true); changeAll(); };
+  document.getElementById('test').onclick  = function() { _test(true); changeAll(); };
+
+  document.getElementById('step').onclick    = function() { stepFlag = true; };
+  document.getElementById('animate').onclick = function() { animFlag = true; };
+  document.getElementById('run').onclick     = function() { runFlag = true; };
+  document.getElementById('stop').onclick    = function() { animFlag = runFlag = false; };
+
+  document.getElementById('resetCPU').onclick = function() { resetCPU(); changeAll(); };
+
+  document.getElementById('ra').onclick = function() {
+    reset(); endAddr = 0; disArray = [];
+    document.getElementById('data').value = '';
+    document.getElementById('break').innerHTML = '';
+    animFlag = runFlag = testFlag = false;
+    document.getElementById('hardware_0').checked = true;
+    testFlag = false;
+  };
+
+  document.getElementById('load').onclick = function() {
+    clearROM(); clearRAM(); resetCPU();
+    endAddr = 0; disArray = [];
+    document.getElementById('break').innerHTML = '';
+    load(document.getElementById('data').value, 0);
+  };
+
+  document.getElementById('resetROM').onclick = function() {
+    clearROM(); endAddr = 0; disArray = [];
+    document.getElementById('data').value = '';
+    document.getElementById('break').innerHTML = '';
+    changeAll();
+  };
+
+  document.getElementById('ascii').onchange = show;
+  document.getElementById('dasm').onchange  = show;
+
+  function loadSample(hex, testMode) {
+    clearROM(); clearRAM(); resetCPU();
+    endAddr = 0; disArray = [];
+    document.getElementById('break').innerHTML = '';
+    testFlag = !!testMode;
+    document.getElementById(testMode ? 'hardware_1' : 'hardware_0').checked = true;
+    document.getElementById('data').value = hex;
+    load(hex, 0);
+  }
+
+  function loadSampleAsm(asmText, testMode) {
+    document.getElementById('asm-input').value = asmText.trim();
+    document.getElementById('asm-error').textContent = '';
+    var result = assemble(asmText);
+    if (result.error) {
+      document.getElementById('asm-error').textContent = result.error;
+      return;
+    }
+    loadSample(result.hex, testMode);
+  }
+
+  document.getElementById('p-add').onclick = function() {
+    loadSampleAsm([
+      '; ADD: 5 + 3 → result in R2',
+      '; Change $53 to set R0=first, R1=second (e.g. $26 = R0:2, R1:6)',
+      'FIM P0, $53   ; R0 = 5, R1 = 3',
+      'CLC           ; clear carry before add',
+      'LD  R1        ; A = R1 (3)',
+      'ADD R0        ; A = A + R0 = 8',
+      'XCH R2        ; R2 = result (8)',
+      'NOP           ; end'
+    ].join('\n'), false);
+  };
+
+  document.getElementById('p-sub').onclick = function() {
+    loadSampleAsm([
+      '; SUB: 9 - 4 → result in R2',
+      '; Change $94 to set R0=minuend, R1=subtrahend',
+      'FIM P0, $94   ; R0 = 9, R1 = 4',
+      'CLC           ; C=0 so ~C=1, giving true 2s-complement subtract',
+      'LD  R0        ; A = R0 (9)',
+      'SUB R1        ; A = A - R1 = 5  (A + ~R1 + ~C)',
+      'XCH R2        ; R2 = result (5)',
+      'NOP           ; end'
+    ].join('\n'), false);
+  };
+
+  document.getElementById('p-mul').onclick = function() {
+    loadSampleAsm([
+      '; MUL: 3 x 4 → result in R2 (repeated addition)',
+      '; Change $34 to set R0=multiplicand, R1=multiplier',
+      'FIM P0, $34   ; R0 = 3 (multiplicand), R1 = 4 (multiplier)',
+      'FIM P1, $00   ; R2 = 0 (accumulator),  R3 = 0',
+      'CLC',
+      'LD  R1        ; copy multiplier into R3 as loop counter',
+      'XCH R3        ; R3 = counter',
+      'LOOP:',
+      'LD  R3        ; A = counter',
+      'JCN AZ, END   ; if counter == 0, done',
+      'CLC',
+      'LD  R2        ; A = accumulator',
+      'ADD R0        ; A += multiplicand',
+      'XCH R2        ; R2 = new accumulator',
+      'LD  R3        ; A = counter',
+      'DAC           ; A = counter - 1',
+      'XCH R3        ; R3 = decremented counter',
+      'JUN LOOP      ; repeat',
+      'END:',
+      'NOP'
+    ].join('\n'), false);
+  };
+
+  document.getElementById('p-disc').onclick = function() {
+    loadSampleAsm([
+      '; DISCRIMINANT: b^2 - 4ac → result in R3',
+      '; Inputs: R0=a, R1=b, R2=c  (FIM loads a=1, b=3, c=1)',
+      '; Change values in the FIM lines to try different a,b,c',
+      '; Note: all values must be 0-F (single nibble)',
+      'FIM P0, $13   ; R0 = a = 1,  R1 = b = 3',
+      'FIM P1, $10   ; R2 = c = 1,  R3 = 0 (result)',
+      'FIM P2, $00   ; R4 = 0 (b^2 lo), R5 = 0 (b^2 hi)',
+      'FIM P3, $00   ; R6 = 0 (counter), R7 = 0 (ac accumulator)',
+      '',
+      '; --- Step 1: compute b^2 by adding b to R4, b times ---',
+      'CLC',
+      'LD  R1        ; A = b',
+      'XCH R6        ; R6 = b (loop counter)',
+      'B2LOOP:',
+      'LD  R6        ; A = counter',
+      'JCN AZ, B2END ; if 0, b^2 done',
+      'CLC',
+      'LD  R4        ; A = b^2 accumulator',
+      'ADD R1        ; A += b',
+      'XCH R4        ; R4 = new b^2',
+      'TCC           ; A = carry',
+      'ADD R5        ; propagate into hi nibble',
+      'XCH R5        ; R5 = hi',
+      'LD  R6        ; A = counter',
+      'DAC           ; counter--',
+      'XCH R6        ; store back',
+      'JUN B2LOOP',
+      'B2END:',
+      '',
+      '; --- Step 2: compute a*c → R7 ---',
+      'LD  R2        ; A = c',
+      'XCH R6        ; R6 = c (counter)',
+      'ACLOOP:',
+      'LD  R6        ; A = counter',
+      'JCN AZ, ACEND ; if 0, a*c done',
+      'CLC',
+      'LD  R7        ; A = ac accumulator',
+      'ADD R0        ; A += a',
+      'XCH R7        ; R7 = new ac',
+      'LD  R6',
+      'DAC',
+      'XCH R6',
+      'JUN ACLOOP',
+      'ACEND:',
+      '',
+      '; --- Step 3: multiply ac by 4 (two left shifts via RAL) ---',
+      'CLC',
+      'LD  R7',
+      'RAL           ; * 2',
+      'XCH R7',
+      'CLC',
+      'LD  R7',
+      'RAL           ; * 4',
+      'XCH R7',
+      '',
+      '; --- Step 4: disc = b^2 - 4ac → R3 ---',
+      'CLC',
+      'LD  R4        ; A = b^2',
+      'SUB R7        ; A = b^2 - 4ac',
+      'XCH R3        ; R3 = discriminant',
+      'NOP'
+    ].join('\n'), false);
+  };
+
+  document.getElementById('p-count').onclick = function() {
+    loadSampleAsm([
+      '; COUNT: increment R0 from 0 to F, looping forever',
+      'FIM P0, $00   ; R0 = 0',
+      'LOOP:',
+      'INC R0        ; R0 = R0 + 1 (wraps 0xF -> 0)',
+      'JUN LOOP      ; repeat forever'
+    ].join('\n'), false);
+  };
+
+  document.getElementById('p-prime').onclick = function() {
+    loadSampleAsm([
+      '; PRIMALITY TEST',
+      '; Change $07 to any number 2-13',
+      '; Output: R2 = 1 if prime, 0 if not prime',
+      'LDM $07',
+      'XCH R0',
+      'FIM P1, $00',
+      'FIM P2, $00',
+      'FIM P3, $00',
+      'LD  R0',
+      'JCN AZ, NOTPRIME',
+      'DAC',
+      'JCN AZ, NOTPRIME',
+      'LDM 2',
+      'XCH R6',
+      'NEXTDIV:',
+      'CLC',
+      'LD  R0',
+      'SUB R6',
+      'JCN AZ, ISPRIME',
+      'JCN CNZ, ISPRIME',
+      'LD  R0',
+      'XCH R4',
+      'SUBLOOP:',
+      'CLC',
+      'LD  R4',
+      'SUB R6',
+      'JCN AZ, NOTPRIME',
+      'JCN CNZ, NODIV',
+      'XCH R4',
+      'JUN SUBLOOP',
+      'NODIV:',
+      'INC R6',
+      'JUN NEXTDIV',
+      'ISPRIME:',
+      'LDM 1',
+      'XCH R2',
+      'JUN DONE',
+      'NOTPRIME:',
+      'LDM 0',
+      'XCH R2',
+      'DONE:',
+      'NOP'
+    ].join('\n'), false);
+  };
+
+  document.getElementById('p-gen').onclick = function() {
+    loadSampleAsm([
+      '; PRIME GENERATION',
+      '; Change $0D to set upper bound (max 13)',
+      '; Output: R2=count, R3-R8=primes found',
+      'LDM $0D',
+      'XCH R0',
+      'LDM 0',
+      'XCH R2',
+      'LDM 0',
+      'XCH R3',
+      'LDM 0',
+      'XCH R4',
+      'LDM 0',
+      'XCH R5',
+      'LDM 0',
+      'XCH R6',
+      'LDM 0',
+      'XCH R7',
+      'LDM 0',
+      'XCH R8',
+      'LDM 2',
+      'XCH R9',
+      'TRYNUM:',
+      'CLC',
+      'LD  R0',
+      'SUB R9',
+      'JCN CNZ, GENDONE',
+      'LDM 2',
+      'XCH R10',
+      'TRYDIV:',
+      'CLC',
+      'LD  R9',
+      'SUB R10',
+      'JCN AZ, STOREPRIME',
+      'JCN CNZ, STOREPRIME',
+      'LD  R9',
+      'XCH R11',
+      'DIVLOOP:',
+      'CLC',
+      'LD  R11',
+      'SUB R10',
+      'JCN AZ, COMPOSITE',
+      'JCN CNZ, NEXTDIV2',
+      'XCH R11',
+      'JUN DIVLOOP',
+      'NEXTDIV2:',
+      'INC R10',
+      'JUN TRYDIV',
+      'COMPOSITE:',
+      'INC R9',
+      'JUN TRYNUM',
+      'STOREPRIME:',
+      'LD  R2',
+      'JCN AZ, PUT3',
+      'DAC',
+      'JCN AZ, PUT4',
+      'DAC',
+      'JCN AZ, PUT5',
+      'DAC',
+      'JCN AZ, PUT6',
+      'DAC',
+      'JCN AZ, PUT7',
+      'JUN PUT8',
+      'PUT3: LD R9',
+      'XCH R3',
+      'JUN STORED',
+      'PUT4: LD R9',
+      'XCH R4',
+      'JUN STORED',
+      'PUT5: LD R9',
+      'XCH R5',
+      'JUN STORED',
+      'PUT6: LD R9',
+      'XCH R6',
+      'JUN STORED',
+      'PUT7: LD R9',
+      'XCH R7',
+      'JUN STORED',
+      'PUT8: LD R9',
+      'XCH R8',
+      'STORED:',
+      'INC R2',
+      'INC R9',
+      'JUN TRYNUM',
+      'GENDONE:',
+      'NOP'
+    ].join('\n'), false);
+  };
+
+  document.getElementById('p-factor').onclick = function() {
+    loadSampleAsm([
+      '; INTEGER FACTORIZATION',
+      '; Change $0C to any number 2-15',
+      '; Output: R2=count, R3-R6=prime factors in order',
+      'LDM $0C',
+      'XCH R0',
+      'LDM 0',
+      'XCH R2',
+      'LDM 0',
+      'XCH R3',
+      'LDM 0',
+      'XCH R4',
+      'LDM 0',
+      'XCH R5',
+      'LDM 0',
+      'XCH R6',
+      'LD  R0',
+      'XCH R7',
+      'LDM 2',
+      'XCH R8',
+      'FACTLOOP:',
+      'LD  R7',
+      'DAC',
+      'JCN AZ, FACTDONE',
+      'CLC',
+      'LD  R7',
+      'SUB R8',
+      'JCN CNZ, FACTDONE',
+      'LD  R7',
+      'XCH R9',
+      'LDM 0',
+      'XCH R10',
+      'SUBLOOP:',
+      'CLC',
+      'LD  R9',
+      'SUB R8',
+      'JCN AZ, DIVIDES',
+      'JCN CNZ, TRYNEXT',
+      'XCH R9',
+      'INC R10',
+      'JUN SUBLOOP',
+      'DIVIDES:',
+      'INC R10',
+      'LD  R2',
+      'JCN AZ, PUT3',
+      'DAC',
+      'JCN AZ, PUT4',
+      'DAC',
+      'JCN AZ, PUT5',
+      'JUN PUT6',
+      'PUT3: LD R8',
+      'XCH R3',
+      'JUN STORED',
+      'PUT4: LD R8',
+      'XCH R4',
+      'JUN STORED',
+      'PUT5: LD R8',
+      'XCH R5',
+      'JUN STORED',
+      'PUT6: LD R8',
+      'XCH R6',
+      'STORED:',
+      'INC R2',
+      'LD  R10',
+      'XCH R7',
+      'JUN FACTLOOP',
+      'TRYNEXT:',
+      'INC R8',
+      'JUN FACTLOOP',
+      'FACTDONE:',
+      'NOP'
+    ].join('\n'), false);
+  };
+
+  document.getElementById('p1').onclick = function() {
+    loadSample('20 00 22 00 DC B2 21 E0 F2 71 06 60 72 06 20 00 22 00 DC B2 21 E4 F2 E5 F2 E6 F2 E7 F2 60 72 14 40 20', false);
+  };
+
+  document.getElementById('p2').onclick = function() {
+    loadSample('E2 CF 2A 41 50 DE 50 E5 30 FE 50 EE 50 E5 50 EE 50 E5 2A 42 5F FF 57 1A 48 24 5F FF 53 20 4C 18 5F FF 4F FF 22 CB F0 2B E1 21 E0 F2 71 29 E4 F2 E5 F2 E6 F2 E7 60 72 29 FA 50 F7 73 39 25 FA F5 E1 1A 47 1C 4F 19 50 12 50 14 52 11 43 40 45 F0 40 3F 2C 66 2E 59 20 00 3D 21 84 85 E0 F6 74 59 75 59 50 DE 40 75 50 DE 21 94 95 E0 F0 74 68 75 68 F0 2B E1 3F FA 68 A8 E0 B9 A9 E2 FB E0 74 75 F0 F8 E0 FC E0 74 81 F0 FB E0 F2 74 88 DF E0 F7 E0 1C 8D F0 2B E1 DF F9 E0 FA F9 E0 F3 F6 E0 74 9C 24 C0 21 E9 71 A3 EC ED EE EF 60 74 A3 20 20 22 30 21 E8 61 23 E8 E0 73 B2 20 00 20 10 F0 2B E1 21 EB 61 23 EB E0 73 C1 2B EC 14 D7 D8 21 E1 F0 2B E4 19 D3 40 20 F2 E4 D2 21 E1 40 20 2B AB F1 E1 F5 BB C0 21 23 25 27 29 2B 2D 2F C0 32 34 36 38 3A 3C 3E 30 C0 A4 F5 FD B4 EA C0 00 FF 00', true);
+  };
+
+  // Breakpoints
+  document.getElementById('bp').onclick = function() {
+    if (endAddr == 0) { alert('Load a program first'); return; }
+    var brk = document.getElementById('break');
+    if (brk.querySelector('table')) { brk.style.display = 'block'; return; }
+
+    brk.style.display = 'block';
+    var handle = document.createElement('div');
+    handle.className = 'handle';
+    handle.innerHTML = '<span>BREAKPOINTS</span><span style="cursor:pointer;" onclick="generateBPArray();document.getElementById(\'break\').style.display=\'none\'">✕</span>';
+    brk.appendChild(handle);
+
+    var table = document.createElement('table');
+    var tbody = document.createElement('tbody');
+    table.appendChild(tbody);
+    brk.appendChild(table);
+
+    for (var i = 0; i < disArray.length; i++) {
+      var dasm = disArray[i];
+      var tr = document.createElement('tr');
+      tr.style.backgroundColor = '#2a2a2a';
+      tr.style.cursor = 'pointer';
+      tr.i = i;
+      tr.onclick = (function(row, trEl) {
+        return function() {
+          disArray[row][3] = !disArray[row][3];
+          trEl.style.backgroundColor = disArray[row][3] ? '#5a1a1a' : '#2a2a2a';
+        };
+      })(i, tr);
+      var td1 = document.createElement('td'); td1.innerHTML = dasm[0]; td1.style.padding = '3px 6px'; td1.style.fontFamily = 'monospace'; td1.style.fontSize = '0.85em';
+      var td2 = document.createElement('td'); td2.innerHTML = dasm[1]; td2.style.padding = '3px 6px'; td2.style.fontFamily = 'monospace'; td2.style.fontSize = '0.85em';
+      var td3 = document.createElement('td'); td3.innerHTML = dasm[2]; td3.style.padding = '3px 6px'; td3.style.fontFamily = 'monospace'; td3.style.fontSize = '0.85em';
+      tr.appendChild(td1); tr.appendChild(td2); tr.appendChild(td3);
+      tbody.appendChild(tr);
+    }
+
+    var btnClear = document.createElement('button');
+    btnClear.innerHTML = 'Clear all';
+    btnClear.style.margin = '5px 5px 0 0';
+    btnClear.onclick = function() {
+      var rows = tbody.getElementsByTagName('tr');
+      for (var i = 0; i < rows.length; i++) { disArray[i][3] = false; rows[i].style.backgroundColor = '#2a2a2a'; }
+    };
+    var btnClose = document.createElement('button');
+    btnClose.innerHTML = 'Close';
+    btnClose.style.margin = '5px 0 0';
+    btnClose.onclick = function() { generateBPArray(); brk.style.display = 'none'; };
+    brk.appendChild(btnClear);
+    brk.appendChild(btnClose);
+  };
+
+  select00.onchange = function() { setRam(0); };
+  select01.onchange = function() { setRam(0); };
+  select10.onchange = function() { setRam(1); };
+  select11.onchange = function() { setRam(1); };
+
+  var resetBtns = document.getElementsByName('reset');
+  resetBtns[0].onclick = function() { resetRam(0); };
+  resetBtns[1].onclick = function() { resetRam(1); };
+
+  setRam(0);
+  setRam(1);
+
+  // ── Assembler ──────────────────────────────────────────────
+  document.getElementById('asm-assemble').onclick = function() {
+    var result = assemble(document.getElementById('asm-input').value);
+    var errEl = document.getElementById('asm-error');
+    if (result.error) {
+      errEl.textContent = result.error;
+    } else {
+      errEl.textContent = '';
+      loadSample(result.hex, false);
+    }
+  };
+  document.getElementById('asm-clear').onclick = function() {
+    document.getElementById('asm-input').value = '';
+    document.getElementById('asm-error').textContent = '';
+  };
+
+  reset();
+  mainLoop();
+};
+
+// ============================================================
+// assembler.js — Intel 4004 assembler
+// ============================================================
+function assemble(src) {
+
+  // ── helpers ─────────────────────────────────────────────────
+  function parseNum(s) {
+    s = (s || '').trim();
+    if (!s) return null;
+    var v = s[0] === '$' ? parseInt(s.slice(1), 16)
+          : /^0x/i.test(s) ? parseInt(s.slice(2), 16)
+          : parseInt(s, 10);
+    return isNaN(v) ? null : v;
+  }
+
+  function parseReg(s) {
+    var m = (s || '').trim().toUpperCase().match(/^R(\d+)$/);
+    if (!m) return -1;
+    var n = parseInt(m[1]);
+    return (n >= 0 && n <= 15) ? n : -1;
+  }
+
+  function parsePair(s) {
+    s = (s || '').trim().toUpperCase();
+    var m = s.match(/^P(\d+)$/);
+    if (m) { var n = parseInt(m[1]); return (n >= 0 && n <= 7) ? n : -1; }
+    var r = parseReg(s);  // R0→P0, R2→P1 …
+    return (r >= 0 && r % 2 === 0) ? (r >> 1) : -1;
+  }
+
+  // 2-byte instructions
+  var IS2 = { JCN:1, FIM:1, ISZ:1, JUN:1, JMS:1 };
+
+  function instrSize(mn) {
+    var ALL = 'NOP JCN FIM SRC FIN JIN JUN JMS INC ISZ ADD SUB LD XCH BBL LDM ' +
+              'CLB CLC IAC CMC CMA RAL RAR TCC DAC TCS STC DAA KBP DCL ' +
+              'WRM WMP WRR WR0 WR1 WR2 WR3 SBM RDM RDR ADM RD0 RD1 RD2 RD3';
+    if (ALL.indexOf(mn) < 0) return -1;
+    return IS2[mn] ? 2 : 1;
+  }
+
+  // JCN condition bits: bit0=test, bit1=carry, bit2=acc-zero, bit3=invert
+  // So: TN=1(test≠0), CN=2(carry=1), AZ=4(acc=0)
+  // Add 8 to invert: TNZ=9, CNZ=10, ANZ=12
+  var COND = { TN:1, CN:2, AZ:4, TNZ:9, CNZ:10, ANZ:12,
+               TZ:9, CZ:10, AN:12 };
+
+  // ── Pass 1: collect labels & build token list ────────────────
+  var lines  = src.split('\n');
+  var tokens = [];
+  var labels = {};
+  var pc = 0;
+  var errs = [];
+
+  for (var i = 0; i < lines.length; i++) {
+    var raw = lines[i].replace(/;.*$/, '').trim();
+    if (!raw) continue;
+
+    // strip label (may be alone on line or before mnemonic)
+    while (raw.indexOf(':') !== -1) {
+      var ci  = raw.indexOf(':');
+      var lbl = raw.slice(0, ci).trim().toUpperCase();
+      if (lbl) labels[lbl] = pc;
+      raw = raw.slice(ci + 1).trim();
+    }
+    if (!raw) continue;
+
+    var mm = raw.match(/^([A-Za-z]\w*)([\s,].*)?\s*$/);
+    if (!mm) { errs.push('Line ' + (i+1) + ': cannot parse: ' + raw); continue; }
+    var mn = mm[1].toUpperCase();
+    var argsRaw = (mm[2] || '').trim();
+    var sz = instrSize(mn);
+    if (sz < 0) { errs.push('Line ' + (i+1) + ': unknown mnemonic: ' + mn); continue; }
+    tokens.push({ line: i+1, mn: mn, argsRaw: argsRaw, pc: pc });
+    pc += sz;
+  }
+
+  if (errs.length) return { error: errs.join('  |  ') };
+
+  // ── Pass 2: emit bytes ───────────────────────────────────────
+  var bytes = [];
+
+  for (var t = 0; t < tokens.length; t++) {
+    var tok  = tokens[t];
+    var mn   = tok.mn;
+    var ln   = tok.line;
+    var args = tok.argsRaw ? tok.argsRaw.split(',').map(function(s){ return s.trim(); }) : [];
+    var ag = function(i) { return args[i] || ''; };
+
+    var addr8 = function(s) {
+      var u = s.trim().toUpperCase();
+      if (u in labels) return labels[u] & 0xFF;
+      var v = parseNum(s); return v === null ? null : v & 0xFF;
+    };
+    var addr12 = function(s) {
+      var u = s.trim().toUpperCase();
+      if (u in labels) return labels[u] & 0xFFF;
+      var v = parseNum(s); return v === null ? null : v & 0xFFF;
+    };
+
+    var out = null; // array of bytes, or string error
+
+    switch (mn) {
+      case 'NOP': out=[0x00]; break; case 'CLB': out=[0xF0]; break;
+      case 'CLC': out=[0xF1]; break; case 'IAC': out=[0xF2]; break;
+      case 'CMC': out=[0xF3]; break; case 'CMA': out=[0xF4]; break;
+      case 'RAL': out=[0xF5]; break; case 'RAR': out=[0xF6]; break;
+      case 'TCC': out=[0xF7]; break; case 'DAC': out=[0xF8]; break;
+      case 'TCS': out=[0xF9]; break; case 'STC': out=[0xFA]; break;
+      case 'DAA': out=[0xFB]; break; case 'KBP': out=[0xFC]; break;
+      case 'DCL': out=[0xFD]; break; case 'WRM': out=[0xE0]; break;
+      case 'WMP': out=[0xE1]; break; case 'WRR': out=[0xE2]; break;
+      case 'WR0': out=[0xE4]; break; case 'WR1': out=[0xE5]; break;
+      case 'WR2': out=[0xE6]; break; case 'WR3': out=[0xE7]; break;
+      case 'SBM': out=[0xE8]; break; case 'RDM': out=[0xE9]; break;
+      case 'RDR': out=[0xEA]; break; case 'ADM': out=[0xEB]; break;
+      case 'RD0': out=[0xEC]; break; case 'RD1': out=[0xED]; break;
+      case 'RD2': out=[0xEE]; break; case 'RD3': out=[0xEF]; break;
+
+      case 'INC': case 'ADD': case 'SUB': case 'LD': case 'XCH': {
+        var r0 = parseReg(ag(0));
+        if (r0 < 0) { out = 'expected register R0-R15, got "' + ag(0) + '"'; break; }
+        var base0 = {INC:0x60,ADD:0x80,SUB:0x90,LD:0xA0,XCH:0xB0}[mn];
+        out = [base0 | r0]; break;
+      }
+
+      case 'BBL': case 'LDM': {
+        var v0 = parseNum(ag(0));
+        if (v0 === null || v0 < 0 || v0 > 15) { out = 'expected 4-bit value 0-$F, got "' + ag(0) + '"'; break; }
+        out = [({BBL:0xC0,LDM:0xD0}[mn]) | v0]; break;
+      }
+
+      case 'SRC': { var p0=parsePair(ag(0)); if(p0<0){out='expected pair P0-P7, got "'+ag(0)+'"';break;} out=[0x21|(p0<<1)]; break; }
+      case 'FIN': { var p0=parsePair(ag(0)); if(p0<0){out='expected pair P0-P7, got "'+ag(0)+'"';break;} out=[0x30|(p0<<1)]; break; }
+      case 'JIN': { var p0=parsePair(ag(0)); if(p0<0){out='expected pair P0-P7, got "'+ag(0)+'"';break;} out=[0x31|(p0<<1)]; break; }
+
+      case 'FIM': {
+        var p1 = parsePair(ag(0));
+        if (p1 < 0) { out = 'expected pair P0-P7, got "' + ag(0) + '"'; break; }
+        var v1 = parseNum(ag(1));
+        if (v1 === null || v1 < 0 || v1 > 255) { out = 'expected byte $00-$FF, got "' + ag(1) + '"'; break; }
+        out = [0x20 | (p1 << 1), v1]; break;
+      }
+
+      case 'ISZ': {
+        var r1 = parseReg(ag(0));
+        if (r1 < 0) { out = 'expected register R0-R15, got "' + ag(0) + '"'; break; }
+        var a1 = addr8(ag(1));
+        if (a1 === null) { out = 'expected address or label, got "' + ag(1) + '"'; break; }
+        out = [0x70 | r1, a1]; break;
+      }
+
+      case 'JCN': {
+        var cu = ag(0).toUpperCase();
+        var c1 = (cu in COND) ? COND[cu] : parseNum(ag(0));
+        if (c1 === null || c1 < 0 || c1 > 15) { out = 'expected condition AZ/CN/TN/CZ/TZ/AN or 0-F, got "' + ag(0) + '"'; break; }
+        var a2 = addr8(ag(1));
+        if (a2 === null) { out = 'expected address or label, got "' + ag(1) + '"'; break; }
+        out = [0x10 | c1, a2]; break;
+      }
+
+      case 'JUN': case 'JMS': {
+        var a3 = addr12(ag(0));
+        if (a3 === null) { out = 'expected address or label, got "' + ag(0) + '"'; break; }
+        out = [(mn==='JUN'?0x40:0x50) | ((a3>>8)&0xF), a3&0xFF]; break;
+      }
+
+      default: out = 'unknown mnemonic "' + mn + '"';
+    }
+
+    if (typeof out === 'string') return { error: 'Line ' + ln + ': ' + out };
+    if (!out) return { error: 'Line ' + ln + ': internal error for ' + mn };
+    for (var b = 0; b < out.length; b++) bytes.push(out[b]);
+  }
+
+  if (!bytes.length) return { error: 'No instructions found.' };
+  var hex = bytes.map(function(b){ return ('0'+(b&0xFF).toString(16).toUpperCase()).slice(-2); }).join(' ');
+  return { hex: hex };
+}
+</script>
+</body>
+</html>
